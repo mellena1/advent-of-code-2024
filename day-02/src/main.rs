@@ -51,3 +51,24 @@ fn part_2(levels: &Vec<Vec<i64>>) -> i64 {
         }
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn part1_works() {
+        let levels = read_input("example.txt").expect("failed to read input");
+
+        let result = part_1(&levels);
+        assert_eq!(result, 2);
+    }
+
+    #[test]
+    fn part2_works() {
+        let levels = read_input("example.txt").expect("failed to read input");
+
+        let result = part_2(&levels);
+        assert_eq!(result, 4);
+    }
+}

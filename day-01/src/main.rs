@@ -47,3 +47,24 @@ fn part2(list1: &Vec<i64>, list2: &Vec<i64>) -> i64 {
         .map(|num| num * right_appearances.get(num).unwrap_or(&0))
         .sum()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn part1_works() {
+        let (list1, list2) = read_input("example.txt").expect("failed to read input");
+
+        let result = part1(list1.clone(), list2.clone());
+        assert_eq!(result, 11);
+    }
+
+    #[test]
+    fn part2_works() {
+        let (list1, list2) = read_input("example.txt").expect("failed to read input");
+
+        let result = part2(&list1, &list2);
+        assert_eq!(result, 31);
+    }
+}
