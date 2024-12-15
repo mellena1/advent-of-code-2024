@@ -1,6 +1,6 @@
+use grid::{new_point_if_in_bounds, Direction, Point};
 use std::{collections::HashSet, fs::read_to_string};
-
-use strum::{EnumIter, IntoEnumIterator};
+use strum::IntoEnumIterator;
 
 fn main() {
     let map = read_input("input.txt").expect("failed to read input");
@@ -25,40 +25,6 @@ fn part2(map: &TrailMap) -> u64 {
 fn read_input(path: &str) -> Result<TrailMap, std::io::Error> {
     let input = read_to_string(path)?;
     Ok(TrailMap::from(input.as_str()))
-}
-
-#[derive(EnumIter)]
-enum Direction {
-    Up,
-    Down,
-    Left,
-    Right,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
-struct Point {
-    x: usize,
-    y: usize,
-}
-
-impl Point {
-    fn new(x: i64, y: i64) -> Self {
-        Self {
-            x: x as usize,
-            y: y as usize,
-        }
-    }
-
-    fn add_direction(&self, dir: Direction) -> (i64, i64) {
-        let x = self.x as i64;
-        let y = self.y as i64;
-        match dir {
-            Direction::Up => (x, y - 1),
-            Direction::Down => (x, y + 1),
-            Direction::Left => (x - 1, y),
-            Direction::Right => (x + 1, y),
-        }
-    }
 }
 
 struct TrailMap {
@@ -101,11 +67,7 @@ impl TrailMap {
 
         let next_pos_options = Direction::iter().filter_map(|dir| {
             let (x, y) = cur_pos.add_direction(dir);
-            if self.is_in_bounds(x, y) {
-                Some(Point::new(x, y))
-            } else {
-                None
-            }
+            new_point_if_in_bounds(&self.map, x, y)
         });
 
         next_pos_options.for_each(|new_pos| {
@@ -138,14 +100,6 @@ impl TrailMap {
 
     fn get_val_at_pos(&self, pos: &Point) -> u8 {
         self.map[pos.y][pos.x]
-    }
-
-    fn is_in_bounds(&self, x: i64, y: i64) -> bool {
-        if x < 0 || y < 0 {
-            return false;
-        }
-
-        x < self.map[0].len() as i64 && y < self.map.len() as i64
     }
 }
 
