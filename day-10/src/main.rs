@@ -66,7 +66,7 @@ impl TrailMap {
         }
 
         let next_pos_options = Direction::iter().filter_map(|dir| {
-            let (x, y) = cur_pos.add_direction(dir);
+            let (x, y) = cur_pos.add_direction(&dir);
             new_point_if_in_bounds(&self.map, x, y)
         });
 
