@@ -4,6 +4,7 @@ use itertools::Itertools;
 
 fn main() {
     let claw_machines = read_input("input.txt").expect("failed to read input");
+    println!("{:?}", claw_machines[86]);
     println!("Part 1: {}", part1(&claw_machines));
     println!("Part 2: {}", part2(&claw_machines));
 }
@@ -52,47 +53,39 @@ struct ClawMachine {
 
 impl ClawMachine {
     fn least_tokens_for_prize(&self, max_btn_presses: u64) -> Option<u64> {
-        let combos = self.find_btn_combos_get_prize(max_btn_presses);
+        self.find_btn_combos_get_prize(max_btn_presses)
+            .map(|combo| self.combo_token_amt(&combo))
+    }
 
-        if combos.len() == 0 {
+    fn find_btn_combos_get_prize(&self, max_btn_presses: u64) -> Option<(u64, u64)> {
+        let cx = self.prize.x as i64;
+        let cy = self.prize.y as i64;
+        let ax = self.buttons[0].x_translation as i64;
+        let ay = self.buttons[0].y_translation as i64;
+        let bx = self.buttons[1].x_translation as i64;
+        let by = self.buttons[1].y_translation as i64;
+
+        let denom = (bx * ay) - (by * ax);
+
+        if denom == 0 {
             return None;
         }
 
-        let best_combo = combos
-            .iter()
-            .min_by(|a, b| self.combo_token_amt(a).cmp(&self.combo_token_amt(b)))
-            .unwrap();
+        if ((cy * bx) - (by * cx)) % denom != 0 {
+            return None;
+        }
+        let a = ((cy * bx) - (by * cx)) / denom;
 
-        Some(self.combo_token_amt(best_combo))
-    }
+        if (cx - (ax * a)) % bx != 0 {
+            return None;
+        }
+        let b = (cx - (ax * a)) / bx;
 
-    fn find_btn_combos_get_prize(&self, max_btn_presses: u64) -> Vec<(u64, u64)> {
-        let mut combos = Vec::new();
-
-        for a_presses in 0..max_btn_presses {
-            let x_from_a = a_presses * self.buttons[0].x_translation;
-            let y_from_a = a_presses * self.buttons[0].y_translation;
-
-            if x_from_a > self.prize.x || y_from_a > self.prize.y {
-                break;
-            }
-
-            for b_presses in 0..max_btn_presses {
-                let x = x_from_a + (b_presses * self.buttons[1].x_translation);
-                let y = y_from_a + (b_presses * self.buttons[1].y_translation);
-
-                if x > self.prize.x || y > self.prize.y {
-                    break;
-                }
-
-                if x == self.prize.x && y == self.prize.y {
-                    combos.push((a_presses, b_presses));
-                    break;
-                }
-            }
+        if a < 0 || b < 0 || a as u64 > max_btn_presses || b as u64 > max_btn_presses {
+            return None;
         }
 
-        combos
+        Some((a as u64, b as u64))
     }
 
     fn combo_token_amt(&self, combo: &(u64, u64)) -> u64 {
