@@ -1,6 +1,6 @@
 use strum::EnumIter;
 
-#[derive(EnumIter, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, EnumIter, PartialEq, Eq, Clone, Copy)]
 pub enum Direction {
     Up,
     Down,
@@ -15,6 +15,15 @@ impl Direction {
             Direction::Down => (x, y + 1),
             Direction::Left => (x - 1, y),
             Direction::Right => (x + 1, y),
+        }
+    }
+
+    pub fn opposite(&self) -> Self {
+        match self {
+            Direction::Up => Direction::Down,
+            Direction::Down => Direction::Up,
+            Direction::Left => Direction::Right,
+            Direction::Right => Direction::Left,
         }
     }
 }
