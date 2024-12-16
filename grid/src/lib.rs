@@ -19,6 +19,11 @@ impl Direction {
     }
 }
 
+pub struct Velocity {
+    pub x_vel: i64,
+    pub y_vel: i64,
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 pub struct Point {
     pub x: usize,
