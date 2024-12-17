@@ -1,6 +1,6 @@
 use strum::EnumIter;
 
-#[derive(Debug, EnumIter, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, EnumIter, PartialEq, Eq, Clone, Copy, Hash, PartialOrd, Ord)]
 pub enum Direction {
     Up,
     Down,
@@ -26,6 +26,35 @@ impl Direction {
             Direction::Right => Direction::Left,
         }
     }
+
+    pub fn turns_to_other_dir(&self, other: &Direction) -> u64 {
+        match self {
+            Direction::Up => match other {
+                Direction::Up => 0,
+                Direction::Down => 2,
+                Direction::Left => 1,
+                Direction::Right => 1,
+            },
+            Direction::Down => match other {
+                Direction::Up => 2,
+                Direction::Down => 0,
+                Direction::Left => 1,
+                Direction::Right => 1,
+            },
+            Direction::Left => match other {
+                Direction::Up => 1,
+                Direction::Down => 1,
+                Direction::Left => 0,
+                Direction::Right => 2,
+            },
+            Direction::Right => match other {
+                Direction::Up => 1,
+                Direction::Down => 1,
+                Direction::Left => 2,
+                Direction::Right => 0,
+            },
+        }
+    }
 }
 
 pub struct Velocity {
@@ -33,7 +62,7 @@ pub struct Velocity {
     pub y_vel: i64,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, PartialOrd, Ord)]
 pub struct Point {
     pub x: usize,
     pub y: usize,
@@ -59,6 +88,33 @@ impl Point {
 
         (x, y) = dir.0.translate(x, y);
         dir.1.translate(x, y)
+    }
+
+    pub fn direction_to_point(&self, other: &Point) -> Direction {
+        if self.x != other.x && self.y != other.y {
+            panic!("must be parallel");
+        }
+
+        if self.x == other.x {
+            if self.y < other.y {
+                Direction::Down
+            } else {
+                Direction::Up
+            }
+        } else {
+            if self.x < other.x {
+                Direction::Right
+            } else {
+                Direction::Left
+            }
+        }
+    }
+
+    pub fn distance_to_point(&self, other: &Point) -> u64 {
+        match self.direction_to_point(other) {
+            Direction::Up | Direction::Down => self.y.abs_diff(other.y) as u64,
+            Direction::Left | Direction::Right => self.x.abs_diff(other.x) as u64,
+        }
     }
 }
 
