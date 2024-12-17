@@ -1,16 +1,28 @@
-use std::{collections::HashSet, fs::read_to_string};
+use std::{
+    cmp::Ordering,
+    collections::{BinaryHeap, HashMap, HashSet},
+    fs::read_to_string,
+};
 
 use grid::{Direction, Point};
-use petgraph::{algo::dijkstra, prelude::DiGraphMap};
+use petgraph::{
+    prelude::DiGraphMap,
+    visit::{VisitMap, Visitable},
+};
 use strum::IntoEnumIterator;
 
 fn main() {
     let map = read_input("input.txt").expect("failed to read input");
     println!("Part 1: {}", part1(&map));
+    println!("Part 2: {}", part2(&map));
 }
 
 fn part1(map: &Map) -> u64 {
     map.lowest_score()
+}
+
+fn part2(map: &Map) -> u64 {
+    map.num_tiles_on_best_paths()
 }
 
 fn read_input(path: &str) -> Result<Map, std::io::Error> {
@@ -81,17 +93,114 @@ impl Map {
     fn lowest_score(&self) -> u64 {
         self.ending_nodes
             .iter()
-            .filter_map(|end_node| {
-                let result = dijkstra(
-                    &self.graph,
-                    self.starting_node,
-                    Some(*end_node),
-                    |(_, _, cost)| *cost,
-                );
-                result.get(end_node).and_then(|v| Some(v.clone()))
+            .map(|end_node| {
+                let (score, _) = self.dijkstra(self.starting_node, *end_node);
+                score
             })
             .min()
             .expect("should have a min weight")
+    }
+
+    fn dijkstra(&self, start: Node, end: Node) -> (u64, Vec<Vec<Node>>) {
+        // essentially a recreation of petgraph's dijkstra fn, but wtih no generics, and keeping
+        // track of the path
+        let mut visited = self.graph.visit_map();
+        let mut scores = HashMap::new();
+        let mut prev: HashMap<Node, Vec<Node>> = HashMap::new();
+        let mut visit_next = BinaryHeap::new();
+        scores.insert(start, 0);
+        visit_next.push(MinScored(0, start));
+
+        while let Some(MinScored(node_score, node)) = visit_next.pop() {
+            if visited.is_visited(&node) {
+                continue;
+            }
+            if end == node {
+                break;
+            }
+            for (_, next, edge_cost) in self.graph.edges(node) {
+                if visited.is_visited(&next) {
+                    continue;
+                }
+
+                let next_score = node_score + edge_cost;
+                match scores.entry(next) {
+                    std::collections::hash_map::Entry::Occupied(ent) => {
+                        if next_score <= *ent.get() {
+                            *ent.into_mut() = next_score;
+                            visit_next.push(MinScored(next_score, next));
+                            prev.entry(next).or_insert(Vec::new()).push(node);
+                        }
+                    }
+                    std::collections::hash_map::Entry::Vacant(ent) => {
+                        ent.insert(next_score);
+                        visit_next.push(MinScored(next_score, next));
+                        prev.insert(next, vec![node]);
+                    }
+                }
+            }
+            visited.visit(node);
+        }
+
+        let mut paths = Vec::new();
+        self.reverse_dijkstra_paths(&end, &vec![], &prev, &mut paths);
+        (scores[&end], paths)
+    }
+
+    fn reverse_dijkstra_paths(
+        &self,
+        cur_node: &Node,
+        cur_path: &Vec<Node>,
+        prev: &HashMap<Node, Vec<Node>>,
+        paths: &mut Vec<Vec<Node>>,
+    ) {
+        let mut next_path = cur_path.clone();
+        next_path.push(*cur_node);
+
+        let opts = prev.get(cur_node);
+        if opts.is_none() || opts.unwrap().len() == 0 {
+            paths.push(next_path.into_iter().rev().collect());
+            return;
+        }
+
+        opts.unwrap().iter().for_each(|opt| {
+            self.reverse_dijkstra_paths(opt, &next_path, prev, paths);
+        });
+    }
+
+    fn num_tiles_on_best_paths(&self) -> u64 {
+        let shortest_paths_per_end_dir: Vec<_> = self
+            .ending_nodes
+            .iter()
+            .map(|end_node| self.dijkstra(self.starting_node, *end_node))
+            .collect();
+        let min_cost = shortest_paths_per_end_dir
+            .iter()
+            .min_by(|a, b| a.0.cmp(&b.0))
+            .expect("must have a min cost")
+            .0;
+
+        let paths: Vec<_> = shortest_paths_per_end_dir
+            .iter()
+            .filter_map(|(cost, p)| if *cost == min_cost { Some(p) } else { None })
+            .flatten()
+            .collect();
+
+        let mut tiles: HashSet<Point> = HashSet::new();
+
+        paths.iter().for_each(|path| {
+            path.iter().enumerate().for_each(|(i, node)| {
+                if i == path.len() - 1 {
+                    return;
+                }
+
+                tiles.insert(node.pos);
+                tiles.extend(node.pos.points_between_other(&path[i + 1].pos));
+                tiles.insert(path[i + 1].pos);
+            });
+        });
+
+        tiles.len() as u64
     }
 }
 
@@ -183,6 +292,36 @@ fn find_corners_connecting_to_corner(
         .collect()
 }
 
+#[derive(Copy, Clone, Debug, Eq)]
+struct MinScored(u64, Node);
+
+impl Ord for MinScored {
+    fn cmp(&self, other: &Self) -> Ordering {
+        let a = &self.0;
+        let b = &other.0;
+
+        if a == b {
+            Ordering::Equal
+        } else if a < b {
+            Ordering::Greater
+        } else {
+            Ordering::Less
+        }
+    }
+}
+
+impl PartialEq for MinScored {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == Ordering::Equal
+    }
+}
+
+impl PartialOrd for MinScored {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -191,5 +330,17 @@ mod tests {
     fn part1_works() {
         let map = read_input("example.txt").expect("failed to read input");
         assert_eq!(part1(&map), 7036);
+
+        let map2 = read_input("example1.txt").expect("failed to read input");
+        assert_eq!(part1(&map2), 11048);
+    }
+
+    #[test]
+    fn part2_works() {
+        let map = read_input("example.txt").expect("failed to read input");
+        assert_eq!(part2(&map), 45);
+
+        let map2 = read_input("example1.txt").expect("failed to read input");
+        assert_eq!(part2(&map2), 64);
     }
 }

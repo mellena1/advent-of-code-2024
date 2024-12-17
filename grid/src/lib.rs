@@ -116,6 +116,26 @@ impl Point {
             Direction::Left | Direction::Right => self.x.abs_diff(other.x) as u64,
         }
     }
+
+    pub fn points_between_other(&self, other: &Point) -> Vec<Point> {
+        let dir = self.direction_to_point(other);
+
+        let mut points = Vec::new();
+
+        let mut cur = self.clone();
+        loop {
+            let (x, y) = cur.add_direction(&dir);
+            cur = Point::new(x, y);
+
+            if cur == *other {
+                break;
+            }
+
+            points.push(cur);
+        }
+
+        points
+    }
 }
 
 pub fn new_point_if_in_bounds<T>(grid: &Vec<Vec<T>>, x: i64, y: i64) -> Option<Point> {
