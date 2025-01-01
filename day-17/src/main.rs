@@ -1,11 +1,9 @@
-use std::fs::read_to_string;
+use std::{fmt::Display, fs::read_to_string};
 
 fn main() {
     let mut computer = read_input("input.txt").expect("invalid input");
     println!("Part 1: {}", part1(&mut computer));
-
-    //computer.reset();
-    //println!("Part 2: {}", part2(&mut computer));
+    println!("Part 2: {}", part2(&mut computer));
 }
 
 fn part1(computer: &mut Computer) -> String {
@@ -13,24 +11,52 @@ fn part1(computer: &mut Computer) -> String {
 }
 
 fn part2(computer: &mut Computer) -> u64 {
-    let mut result: u64 = 0;
-    loop {
-        computer.reset();
-        computer.reg_A = result as u64;
-
-        if computer.running_program_gives_same_output_as_input_prog() {
-            break;
-        }
-
-        result += 1;
-    }
-
-    result
+    find_num_that_gets_outputs(
+        computer,
+        &computer.program.iter().map(|n| *n as u64).collect(),
+        computer.program.len() - 1,
+        0,
+    )
+    .unwrap()
 }
 
 fn read_input(path: &str) -> Result<Computer, std::io::Error> {
     let input = read_to_string(path)?;
     Ok(Computer::from(input.as_str()))
+}
+
+fn find_num_that_gets_outputs(
+    computer: &mut Computer,
+    needed_output: &Vec<u64>,
+    needed_output_idx: usize,
+    cur_num: u64,
+) -> Option<u64> {
+    for i in 0..8 {
+        if cur_num == 0 && i == 0 {
+            continue;
+        }
+        computer.reset();
+        let reg_a_to_try = (cur_num << 3) | i;
+        computer.reg_A = reg_a_to_try;
+
+        let out = computer.run_until_output();
+        if needed_output[needed_output_idx] == out {
+            if needed_output_idx == 0 {
+                return Some(reg_a_to_try);
+            }
+
+            if let Some(answer) = find_num_that_gets_outputs(
+                computer,
+                needed_output,
+                needed_output_idx - 1,
+                reg_a_to_try,
+            ) {
+                return Some(answer);
+            }
+        }
+    }
+
+    None
 }
 
 #[allow(non_snake_case)]
@@ -60,26 +86,13 @@ impl Computer {
         vec_to_str(&self.outputs)
     }
 
-    fn running_program_gives_same_output_as_input_prog(&mut self) -> bool {
+    fn run_until_output(&mut self) -> u64 {
         loop {
             let result = self.tick();
-
             if result == ComputerTickResult::AddedOutput {
-                if self.outputs.len() > self.program.len() {
-                    return false;
-                }
-                let last_out = self.outputs.last().unwrap();
-                if self.program[self.outputs.len() - 1] as u64 != *last_out {
-                    return false;
-                }
-            }
-
-            if result == ComputerTickResult::Halt {
-                break;
+                return self.outputs[0];
             }
         }
-
-        self.outputs.len() == self.program.len()
     }
 
     fn tick(&mut self) -> ComputerTickResult {
@@ -88,7 +101,6 @@ impl Computer {
         }
 
         let (opcode, operand) = self.get_opcode_and_operand();
-        println!("{:?} {}", opcode, operand);
 
         match opcode {
             Instruction::adv => {
@@ -104,7 +116,7 @@ impl Computer {
                 self.instruction_ptr += 2;
             }
             Instruction::bst => {
-                let result = self.combo_operand(operand).rem_euclid(8);
+                let result = self.combo_operand(operand) & 0b111; // same as % 8
 
                 self.reg_B = result;
                 self.instruction_ptr += 2;
@@ -124,7 +136,7 @@ impl Computer {
             }
             Instruction::out => {
                 let combo_op = self.combo_operand(operand);
-                let result = combo_op.rem_euclid(8);
+                let result = combo_op & 0b111; // same as % 8
 
                 self.outputs.push(result);
 
@@ -170,8 +182,7 @@ impl Computer {
     fn division_on_reg_a(&mut self, operand: u8) -> u64 {
         let combo_op = self.combo_operand(operand);
 
-        self.reg_A >> combo_op
-        // self.reg_A / ((2 as u64).pow(combo_op as u32))
+        self.reg_A >> combo_op // same as (A / 2^n)
     }
 
     fn reset(&mut self) {
@@ -180,6 +191,19 @@ impl Computer {
         self.reg_C = self.orig_reg_vals[2];
         self.outputs = Vec::new();
         self.instruction_ptr = 0;
+    }
+}
+
+impl Display for Computer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Reg A: {}\nReg B: {}\nReg C: {}\nOutputs: {}",
+            self.reg_A,
+            self.reg_B,
+            self.reg_C,
+            vec_to_str(&self.outputs)
+        )
     }
 }
 
