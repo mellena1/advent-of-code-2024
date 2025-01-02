@@ -8,24 +8,45 @@ use std::{
 use grid::Point;
 
 fn main() {
-    let mut map = read_input("input.txt").expect("failed to read input");
-    println!("Part 1: {}", part1(&mut map, 100));
+    let map = read_input("input.txt").expect("failed to read input");
+    println!("Part 1: {}", part1(&map, 100));
+    println!("Part 2: {}", part2(&map, 100));
 }
 
-fn part1(map: &mut Map, save_at_least: usize) -> usize {
-    let cheat_spots = map.get_possible_one_move_cheat_spots();
-    let non_cheating_dist = map.dijkstra();
+fn part1(map: &Map, save_at_least: usize) -> usize {
+    find_amount_of_cheats(map, 2, save_at_least)
+}
 
-    cheat_spots
-        .iter()
-        .filter(|p| {
-            map.grid[p.y][p.x] = GridObject::Empty;
-            let dist_with_cheat = map.dijkstra();
-            map.grid[p.y][p.x] = GridObject::Wall;
+fn part2(map: &Map, save_at_least: usize) -> usize {
+    find_amount_of_cheats(map, 20, save_at_least)
+}
 
-            non_cheating_dist - dist_with_cheat >= save_at_least
+fn find_amount_of_cheats(map: &Map, max_cheat_steps: usize, save_at_least: usize) -> usize {
+    let dists_from_start = map.dijkstra(&map.start_loc);
+    let dists_from_end = map.dijkstra(&map.end_loc);
+    let non_cheating_dist = *dists_from_start.get(&map.end_loc).unwrap();
+
+    let points: Vec<Point> = dists_from_start.keys().map(|p| p.clone()).collect();
+
+    points.iter().fold(0, |acc, p| {
+        acc + points.iter().fold(0, |acc, p2| {
+            let steps_to_p2 = p.x.abs_diff(p2.x) + p.y.abs_diff(p2.y);
+            if steps_to_p2 > max_cheat_steps {
+                return acc;
+            }
+
+            let cheating_dist =
+                dists_from_start.get(&p).unwrap() + steps_to_p2 + dists_from_end.get(&p2).unwrap();
+
+            if cheating_dist < non_cheating_dist
+                && non_cheating_dist - cheating_dist >= save_at_least
+            {
+                acc + 1
+            } else {
+                acc
+            }
         })
-        .count()
+    })
 }
 
 fn read_input(path: &str) -> Result<Map, std::io::Error> {
@@ -40,24 +61,20 @@ struct Map {
 }
 
 impl Map {
-    fn dijkstra(&self) -> usize {
+    fn dijkstra(&self, start: &Point) -> HashMap<Point, usize> {
         let mut dist: HashMap<Point, usize> = (0..self.grid[0].len())
             .flat_map(|x| (0..self.grid.len()).map(move |y| (Point { x, y }, usize::MAX)))
             .collect();
 
         let mut heap = BinaryHeap::new();
 
-        dist.insert(self.start_loc, 0);
+        dist.insert(*start, 0);
         heap.push(State {
             cost: 0,
-            position: self.start_loc,
+            position: *start,
         });
 
         while let Some(State { cost, position }) = heap.pop() {
-            if position == self.end_loc {
-                return cost;
-            }
-
             if cost > *dist.get(&position).unwrap() {
                 continue;
             }
@@ -74,7 +91,8 @@ impl Map {
             }
         }
 
-        *dist.get(&self.end_loc).unwrap()
+        // filter out any inaccessible points
+        dist.into_iter().filter(|(_, d)| *d < usize::MAX).collect()
     }
 
     fn neighbors(&self, p: &Point) -> Vec<Point> {
@@ -105,38 +123,6 @@ impl Map {
 
     fn is_in_bounds(&self, x: i64, y: i64) -> bool {
         x >= 0 && x < self.grid[0].len() as i64 && y >= 0 && y < self.grid.len() as i64
-    }
-
-    fn get_possible_one_move_cheat_spots(&self) -> Vec<Point> {
-        self.grid
-            .iter()
-            .enumerate()
-            .flat_map(|(i, row)| {
-                row.iter().enumerate().filter_map(move |(j, obj)| {
-                    if *obj != GridObject::Wall {
-                        return None;
-                    }
-
-                    let p = Point { x: j, y: i };
-                    let neighbors = self.neighbors(&p);
-
-                    if neighbors.len() < 2 || neighbors.len() > 3 {
-                        return None;
-                    }
-
-                    for i in 0..neighbors.len() {
-                        for j in i + 1..neighbors.len() {
-                            if neighbors[i].x == neighbors[j].x || neighbors[i].y == neighbors[j].y
-                            {
-                                return Some(p);
-                            }
-                        }
-                    }
-
-                    None
-                })
-            })
-            .collect()
     }
 }
 
@@ -216,9 +202,16 @@ mod tests {
 
     #[test]
     fn part1_works() {
-        let mut map = read_input("example.txt").expect("failed to read input");
-        assert_eq!(part1(&mut map, 20), 5);
-        assert_eq!(part1(&mut map, 12), 8);
-        assert_eq!(part1(&mut map, 10), 10);
+        let map = read_input("example.txt").expect("failed to read input");
+        assert_eq!(part1(&map, 20), 5);
+        assert_eq!(part1(&map, 12), 8);
+        assert_eq!(part1(&map, 10), 10);
+    }
+
+    #[test]
+    fn part2_works() {
+        let map = read_input("example.txt").expect("failed to read input");
+        assert_eq!(part2(&map, 72), 29);
+        assert_eq!(part2(&map, 70), 41);
     }
 }
