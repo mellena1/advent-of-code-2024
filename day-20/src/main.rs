@@ -15,7 +15,6 @@ fn main() {
 fn part1(map: &mut Map, save_at_least: usize) -> usize {
     let cheat_spots = map.get_possible_one_move_cheat_spots();
     let non_cheating_dist = map.dijkstra();
-    println!("non cheating: {}", non_cheating_dist);
 
     cheat_spots
         .iter()
