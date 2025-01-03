@@ -1,4 +1,4 @@
-use std::{fmt::Display, fs::read_to_string};
+use std::{collections::HashMap, fmt::Display, fs::read_to_string};
 
 use grid::Point;
 
@@ -12,7 +12,7 @@ fn part1(codes: &[KeypadCode]) -> usize {
     codes.iter().fold(0, |acc, code| {
         let btn_seq = code.button_sequence_for_human(2);
         let code_num = code.code_to_num();
-        acc + (btn_seq.len() * code_num)
+        acc + (btn_seq * code_num)
     })
 }
 
@@ -20,7 +20,7 @@ fn part2(codes: &[KeypadCode]) -> usize {
     codes.iter().fold(0, |acc, code| {
         let btn_seq = code.button_sequence_for_human(25);
         let code_num = code.code_to_num();
-        acc + (btn_seq.len() * code_num)
+        acc + (btn_seq * code_num)
     })
 }
 
@@ -39,45 +39,78 @@ struct KeypadCode {
 }
 
 impl KeypadCode {
-    fn button_sequence_for_human(&self, num_robots: usize) -> Vec<DirectionalButton> {
+    const DIR_PAD_EMPTY_SPACE: Point = Point { x: 0, y: 0 };
+    const DIR_PAD_A_POS: Point = Point { x: 2, y: 0 };
+
+    const NUM_PAD_EMPTY_SPACE: Point = Point { x: 0, y: 3 };
+    const NUM_PAD_A_POS: Point = Point { x: 2, y: 3 };
+
+    fn button_sequence_for_human(&self, num_robots: usize) -> usize {
         let first_options = self.buttons_for_numpad();
 
-        let best = (0..num_robots).fold(first_options, |acc, i| {
-            println!("doing layer: {}", i);
-            self.buttons_for_directional_pad(&acc)
-        });
+        let best =
+            self.find_min_length_of_buttons(&first_options, 1, num_robots, &mut HashMap::new());
 
         best
     }
 
     fn buttons_for_numpad(&self) -> Vec<DirectionalButton> {
-        let mut cur_pos = Point { x: 2, y: 3 };
-
-        let empty_space_pos = Point { x: 0, y: 3 };
+        let mut cur_pos = Self::NUM_PAD_A_POS;
 
         self.code
             .chars()
             .flat_map(|c| {
                 let next_pos = self.pos_of_numpad_button(c);
 
-                let buttons = self.path_to_next_button(&cur_pos, &next_pos, &empty_space_pos);
+                let buttons =
+                    self.path_to_next_button(&cur_pos, &next_pos, &Self::NUM_PAD_EMPTY_SPACE);
                 cur_pos = next_pos;
                 buttons
             })
             .collect()
     }
 
-    fn buttons_for_directional_pad(&self, inputs: &[DirectionalButton]) -> Vec<DirectionalButton> {
-        let mut cur_pos = Point { x: 2, y: 0 };
+    fn find_min_length_of_buttons(
+        &self,
+        inputs: &[DirectionalButton],
+        level: usize,
+        max_level: usize,
+        cache: &mut HashMap<(Vec<DirectionalButton>, usize), usize>,
+    ) -> usize {
+        if let Some(cached_num) = cache.get(&(inputs.to_vec(), level)) {
+            return *cached_num;
+        }
 
-        let empty_space_pos = Point { x: 0, y: 0 };
+        if level == max_level {
+            let btns = self.buttons_for_directional_pad(inputs);
+            return btns.len();
+        }
+
+        let mut cur_pos = Self::DIR_PAD_A_POS;
+        inputs.iter().fold(0, |acc, i| {
+            let next_pos = self.pos_of_direction_button(*i);
+
+            let btns_for_i =
+                self.path_to_next_button(&cur_pos, &next_pos, &Self::DIR_PAD_EMPTY_SPACE);
+
+            let num_btns =
+                self.find_min_length_of_buttons(&btns_for_i, level + 1, max_level, cache);
+            cache.insert((btns_for_i, level + 1), num_btns);
+            cur_pos = next_pos;
+            acc + num_btns
+        })
+    }
+
+    fn buttons_for_directional_pad(&self, inputs: &[DirectionalButton]) -> Vec<DirectionalButton> {
+        let mut cur_pos = Self::DIR_PAD_A_POS;
 
         inputs
             .iter()
             .flat_map(|btn| {
                 let next_pos = self.pos_of_direction_button(*btn);
 
-                let buttons = self.path_to_next_button(&cur_pos, &next_pos, &empty_space_pos);
+                let buttons =
+                    self.path_to_next_button(&cur_pos, &next_pos, &Self::DIR_PAD_EMPTY_SPACE);
                 cur_pos = next_pos;
                 buttons
             })
@@ -189,7 +222,7 @@ impl KeypadCode {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum DirectionalButton {
     Up,
     Down,
@@ -212,10 +245,6 @@ impl Display for DirectionalButton {
             }
         )
     }
-}
-
-fn btns_to_string(btns: &Vec<DirectionalButton>) -> String {
-    btns.iter().map(|b| b.to_string()).collect()
 }
 
 #[cfg(test)]
