@@ -7,6 +7,8 @@ fn main() {
     let mut device = read_input("input.txt").expect("failed to read input");
     let orig_gate_values = device.gate_values.clone();
 
+    println!("num instrs: {}", device.instructions.len());
+
     println!("Part 1: {}", part1(&mut device));
 
     device.gate_values = orig_gate_values;
@@ -19,8 +21,6 @@ fn part1(device: &mut Device) -> usize {
 }
 
 fn part2(device: &mut Device) -> String {
-    let orig_instrs = device.instructions.clone();
-
     let mut x_gates: Vec<_> = device
         .gate_values
         .iter()
@@ -37,7 +37,57 @@ fn part2(device: &mut Device) -> String {
 
     let needed_z = x_num + y_num;
 
+    let swaps = find_swaps_that_add_correctly(device, needed_z);
+    println!("{}", swaps.len());
+
     "".to_string()
+}
+
+type Swaps = ((usize, usize), (usize, usize));
+
+fn find_swaps_that_add_correctly(device: &mut Device, needed_z: usize) -> Vec<Swaps> {
+    let orig_gates = device.gate_values.clone();
+
+    let mut valid_swaps: Vec<Swaps> = vec![];
+    for i in 0..device.instructions.len() {
+        for j in i + 1..device.instructions.len() {
+            let swap_1 = (i, j);
+
+            for k in 0..device.instructions.len() {
+                if k == i || k == j {
+                    continue;
+                }
+
+                for l in k + 1..device.instructions.len() {
+                    if l == i || l == j {
+                        continue;
+                    }
+
+                    let swap_2 = (k, l);
+
+                    let swaps = (swap_1, swap_2);
+
+                    device.swap_two_instructions(&swaps);
+
+                    let result = device.run_all_instructions();
+
+                    if result != None {
+                        let z = device.get_num_from_z_gates();
+
+                        if z == needed_z {
+                            valid_swaps.push(swaps);
+                            println!("{}", valid_swaps.len());
+                        }
+                    }
+
+                    device.swap_two_instructions(&swaps);
+                    device.gate_values = orig_gates.clone();
+                }
+            }
+        }
+    }
+
+    valid_swaps
 }
 
 fn read_input(path: &str) -> Result<Device, std::io::Error> {
@@ -51,18 +101,29 @@ struct Device {
 }
 
 impl Device {
-    fn run_all_instructions(&mut self) {
+    fn run_all_instructions(&mut self) -> Option<()> {
         let mut instrs_to_do = VecDeque::from_iter(self.instructions.iter());
 
+        let mut iters_without_an_instr = 0;
         while let Some(instr) = instrs_to_do.pop_front() {
             if !self.can_do_instruction(&instr) {
                 instrs_to_do.push_back(instr);
+                iters_without_an_instr += 1;
+
+                if iters_without_an_instr == instrs_to_do.len() {
+                    return None;
+                }
+
                 continue;
             }
+
+            iters_without_an_instr = 0;
 
             let (c, c_val) = instr.run(&self.gate_values);
             self.gate_values.insert(c, c_val);
         }
+
+        Some(())
     }
 
     fn get_num_from_z_gates(&self) -> usize {
@@ -77,6 +138,18 @@ impl Device {
 
     fn can_do_instruction(&self, instr: &Instruction) -> bool {
         self.gate_values.contains_key(&instr.a) && self.gate_values.contains_key(&instr.b)
+    }
+
+    fn swap_two_instructions(&mut self, swaps: &Swaps) {
+        self.swap_instructions(&swaps.0);
+        self.swap_instructions(&swaps.1);
+    }
+
+    fn swap_instructions(&mut self, swap: &(usize, usize)) {
+        let a = self.instructions[swap.0].c.clone();
+        let b = self.instructions[swap.1].c.clone();
+        self.instructions[swap.0].c = b;
+        self.instructions[swap.1].c = a;
     }
 }
 
