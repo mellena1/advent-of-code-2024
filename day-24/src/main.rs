@@ -9,12 +9,14 @@ fn main() {
 
     println!("Part 1: {}", part1(&mut device));
 
+    println!("{}", device.graphviz());
+
     // println!("{:?}", find_bit_flips_per_swap(&mut device));
-    find_inputs_for_each_output(&device)
-        .iter()
-        .for_each(|(k, v)| {
-            println!("{} - {:?}", k, v);
-        });
+    //find_inputs_for_each_output(&device)
+    //    .iter()
+    //    .for_each(|(k, v)| {
+    //        println!("{} - {:?}", k, v);
+    //    });
 
     device.gate_values = orig_gate_values;
     println!("Part 2: {}", part2(&mut device));
@@ -221,6 +223,16 @@ impl Device {
         let b = self.instructions[swap.1].c.clone();
         self.instructions[swap.0].c = b;
         self.instructions[swap.1].c = a;
+    }
+
+    fn graphviz(&self) -> String {
+        let mut s = "digraph {\n".to_string();
+
+        self.instructions.iter().for_each(|instr| {
+            s += format!("{} -> {}\n{} -> {}\n", instr.a, instr.c, instr.b, instr.c).as_str();
+        });
+
+        s + "}\n"
     }
 }
 
