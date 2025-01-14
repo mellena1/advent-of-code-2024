@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     fs::read_to_string,
 };
 
@@ -8,15 +8,6 @@ fn main() {
     let orig_gate_values = device.gate_values.clone();
 
     println!("Part 1: {}", part1(&mut device));
-
-    println!("{}", device.graphviz());
-
-    // println!("{:?}", find_bit_flips_per_swap(&mut device));
-    //find_inputs_for_each_output(&device)
-    //    .iter()
-    //    .for_each(|(k, v)| {
-    //        println!("{} - {:?}", k, v);
-    //    });
 
     device.gate_values = orig_gate_values;
     println!("Part 2: {}", part2(&mut device));
@@ -28,139 +19,9 @@ fn part1(device: &mut Device) -> usize {
 }
 
 fn part2(device: &mut Device) -> String {
-    let mut x_gates: Vec<_> = device
-        .gate_values
-        .iter()
-        .filter(|(k, _)| k.starts_with("x"))
-        .collect();
-    let x_num = get_num_from_list_of_gates(&mut x_gates);
-
-    let mut y_gates: Vec<_> = device
-        .gate_values
-        .iter()
-        .filter(|(k, _)| k.starts_with("y"))
-        .collect();
-    let y_num = get_num_from_list_of_gates(&mut y_gates);
-
-    let needed_z = x_num + y_num;
-
-    let swaps = find_swaps_that_add_correctly(device, needed_z);
-    println!("{}", swaps.len());
+    println!("{:?}", device.fix_instrs_for_adders(&mut vec![]));
 
     "".to_string()
-}
-
-fn find_inputs_for_each_output(device: &Device) -> HashMap<String, Vec<Instruction>> {
-    let all_outputs: Vec<_> = device
-        .instructions
-        .iter()
-        .map(|instr| instr.c.to_string())
-        .collect();
-
-    let mut map = HashMap::with_capacity(all_outputs.len());
-
-    all_outputs.iter().for_each(|out| {
-        let mut queue = vec![out.to_string()];
-        let mut instrs = vec![];
-
-        while let Some(v) = queue.pop() {
-            if let Some(instr) = device.instructions.iter().find(|instr| instr.c == v) {
-                instrs.push(instr.clone());
-                queue.push(instr.a.to_string());
-                queue.push(instr.b.to_string());
-            }
-        }
-
-        map.insert(out.to_string(), instrs);
-    });
-
-    map
-}
-
-fn find_bit_flips_per_swap(device: &mut Device) -> HashMap<(usize, usize), usize> {
-    let orig_gates = device.gate_values.clone();
-
-    let orig_z = part1(device);
-    device.gate_values = orig_gates.clone();
-
-    let mut bit_flips = HashMap::new();
-
-    for i in 0..device.instructions.len() {
-        for j in i + 1..device.instructions.len() {
-            let swap = (i, j);
-
-            device.swap_instructions(&swap);
-
-            let result = device.run_all_instructions();
-
-            device.swap_instructions(&swap);
-            device.gate_values = orig_gates.clone();
-
-            if result != None {
-                let z = device.get_num_from_z_gates();
-                if orig_z != z {
-                    println!("{} -- {}", orig_z, z);
-                }
-                bit_flips.insert(swap, orig_z ^ z);
-            }
-        }
-    }
-
-    bit_flips
-}
-
-type Swaps = ((usize, usize), (usize, usize));
-
-fn find_swaps_that_add_correctly(device: &mut Device, needed_z: usize) -> Vec<Swaps> {
-    let orig_gates = device.gate_values.clone();
-
-    let mut valid_swaps: Vec<Swaps> = vec![];
-    for i in 0..device.instructions.len() {
-        for j in i + 1..device.instructions.len() {
-            let swap_1 = (i, j);
-
-            for k in i + 1..device.instructions.len() {
-                if k == i || k == j {
-                    continue;
-                }
-
-                for l in k + 1..device.instructions.len() {
-                    if l == i || l == j {
-                        continue;
-                    }
-
-                    let swap_2 = (k, l);
-
-                    let swaps = (swap_1, swap_2);
-
-                    device.swap_two_instructions(&swaps);
-
-                    let result = device.run_all_instructions();
-                    if swaps == ((0, 5), (1, 2)) {
-                        println!("{:?}", result);
-                    }
-
-                    if result != None {
-                        let z = device.get_num_from_z_gates();
-                        if swaps == ((0, 5), (1, 2)) {
-                            println!("{:?}", device.gate_values);
-                            println!("{:?}", device.instructions);
-                            println!("{} - {}", z, needed_z);
-                        }
-
-                        if z == needed_z {
-                            valid_swaps.push(swaps);
-                        }
-                    }
-
-                    device.swap_two_instructions(&swaps);
-                    device.gate_values = orig_gates.clone();
-                }
-            }
-        }
-    }
-
-    valid_swaps
 }
 
 fn read_input(path: &str) -> Result<Device, std::io::Error> {
@@ -213,16 +74,167 @@ impl Device {
         self.gate_values.contains_key(&instr.a) && self.gate_values.contains_key(&instr.b)
     }
 
-    fn swap_two_instructions(&mut self, swaps: &Swaps) {
-        self.swap_instructions(&swaps.0);
-        self.swap_instructions(&swaps.1);
-    }
-
     fn swap_instructions(&mut self, swap: &(usize, usize)) {
         let a = self.instructions[swap.0].c.clone();
         let b = self.instructions[swap.1].c.clone();
         self.instructions[swap.0].c = b;
         self.instructions[swap.1].c = a;
+    }
+
+    fn fix_instrs_for_adders(
+        &mut self,
+        swaps: &mut Vec<(usize, usize)>,
+    ) -> Option<Vec<(usize, usize)>> {
+        let mut wrong_gates = self.find_wrong_z_gates_for_adder();
+        wrong_gates.sort_by(|a, b| a.cmp(b));
+
+        if swaps.len() > 4 {
+            return None;
+        }
+
+        if swaps.len() == 4 && wrong_gates.len() == 0 {
+            return Some(swaps.to_vec());
+        }
+
+        println!("{} {:?}", wrong_gates[0], swaps);
+
+        let first_broken = wrong_gates[0].clone();
+        let relevant_instrs = if let Ok(v) = self.find_instrs_used_for_z(&first_broken) {
+            v
+        } else {
+            return None;
+        };
+        println!("{:?}", relevant_instrs);
+
+        for (i, _) in relevant_instrs {
+            for j in 0..self.instructions.len() {
+                let swap = (i, j);
+
+                self.swap_instructions(&swap);
+
+                if self.z_gate_is_correct_for_adder(
+                    &first_broken,
+                    &self.get_base_inputs_for_gate(&first_broken),
+                ) {
+                    swaps.push(swap);
+                    if let Some(ans) = self.fix_instrs_for_adders(swaps) {
+                        return Some(ans);
+                    } else {
+                        swaps.pop();
+                    }
+                }
+
+                self.swap_instructions(&swap);
+            }
+        }
+
+        None
+    }
+
+    fn get_z_gate_base_inputs(&self) -> HashMap<String, Vec<Instruction>> {
+        let mut map = HashMap::new();
+
+        self.instructions
+            .iter()
+            .filter_map(|instr| {
+                if instr.c.starts_with("z") {
+                    Some(instr.c.to_string())
+                } else {
+                    None
+                }
+            })
+            .for_each(|z_gate| {
+                map.insert(z_gate.to_string(), self.get_base_inputs_for_gate(&z_gate));
+            });
+
+        map
+    }
+
+    fn get_base_inputs_for_gate(&self, gate: &str) -> Vec<Instruction> {
+        let mut queue = vec![gate.to_string()];
+        let mut instrs = vec![];
+        let mut visited = HashSet::new();
+
+        while let Some(v) = queue.pop() {
+            visited.insert(v.to_string());
+            if let Some(instr) = self.instructions.iter().find(|instr| instr.c == v) {
+                if (instr.a.starts_with("x") || instr.a.starts_with("y"))
+                    && (instr.b.starts_with("x") || instr.b.starts_with("y"))
+                {
+                    instrs.push(instr.clone());
+                } else {
+                    if !visited.contains(&instr.a) {
+                        queue.push(instr.a.to_string());
+                    }
+                    if !visited.contains(&instr.b) {
+                        queue.push(instr.b.to_string());
+                    }
+                }
+            }
+        }
+
+        instrs
+    }
+
+    fn find_wrong_z_gates_for_adder(&self) -> Vec<String> {
+        let z_gates_to_input_instrs = self.get_z_gate_base_inputs();
+
+        z_gates_to_input_instrs
+            .iter()
+            .filter_map(|(z, instrs)| {
+                if !self.z_gate_is_correct_for_adder(z, &instrs) {
+                    Some(z.to_string())
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    fn z_gate_is_correct_for_adder(&self, z: &str, instrs: &[Instruction]) -> bool {
+        let z_bit: usize = z[1..].parse().unwrap();
+
+        if instrs.len() != z_bit + 1 {
+            return false;
+        }
+
+        let mut sorted_instrs = Vec::from(instrs);
+        sorted_instrs.sort_by(|a, b| (&a.a[1..]).cmp(&b.a[1..]));
+
+        sorted_instrs.iter().enumerate().all(|(i, instr)| {
+            if i == sorted_instrs.len() - 1 {
+                instr.gate == Gate::XOR && instr.a[1..].parse::<usize>().unwrap() == i
+            } else {
+                instr.gate == Gate::AND && instr.a[1..].parse::<usize>().unwrap() == i
+            }
+        })
+    }
+
+    fn find_instrs_used_for_z(&self, z: &str) -> Result<Vec<(usize, Instruction)>, ()> {
+        let mut queue = vec![z.to_string()];
+        let mut instrs = vec![];
+        let mut visited = HashSet::new();
+
+        while let Some(v) = queue.pop() {
+            visited.insert(v.to_string());
+
+            if let Some((i, instr)) = self
+                .instructions
+                .iter()
+                .enumerate()
+                .find(|(_, instr)| instr.c == v)
+            {
+                instrs.push((i, instr.clone()));
+                if !visited.contains(&instr.a) {
+                    queue.push(instr.a.to_string());
+                }
+                if !visited.contains(&instr.b) {
+                    queue.push(instr.b.to_string());
+                }
+            }
+        }
+
+        Ok(instrs)
     }
 
     fn graphviz(&self) -> String {
@@ -294,7 +306,7 @@ impl From<&str> for Instruction {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 enum Gate {
     AND,
     OR,
